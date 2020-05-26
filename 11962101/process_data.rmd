@@ -1,0 +1,177 @@
+---
+title: "Process data"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+## Preprocessing data
+
+To extract the meaningful content from the posts, extraneous symbols and content must be filtered out. Social media postings tend to include spam words and symbols such as emoticons, links to external websites, and other nonsensical content. Including these will only increase the size of the data without increasing relevant information. A script is written to filter out these from the posts, by analyzing common patterns in posts and removing a list of spam words and symbols.
+
+
+```{python , eval = FALSE}
+
+#!/usr/bin/python
+# coding=gb18030
+# @Title Weibo text file processor
+
+import sys, getopt
+import re
+
+
+filename = "samples.txt"
+
+infile = open(filename, 'r', encoding="gb18030", errors="surrogateescape")
+
+outfile = open("result-"+filename, "w", encoding="gb18030", errors="surrogateescape")
+
+filterfile = open("prefilterwords.txt", 'r', encoding="gb18030", errors="surrogateescape")
+
+
+with filterfile:
+    filterdata=filterfile.read().replace('\n', '')
+
+
+for line in infile:
+
+    line = re.sub(filterdata, " ", line)
+    line = re.sub(r'\\', " " , line)
+    line2 = line.strip()
+
+    outfile.write(line2)
+    outfile.write("\n")
+
+
+outfile.close()
+infile.close()
+filterfile.close()
+
+
+```
+
+## Segmenting words
+
+A Chinese sentence is comprised of many characters, where one, two, three or more characters form words. The Chinese language does not deploy spaces between words. Thus it is a difficult task for a machine to decipher which Chinese characters form words that make sense in the sentence. Sentence segmentation tools are used for such as task. After pre-processing, the messages are fed into a Chinese sentence segmentation tool called The Stanford Segmenter. The Segmenter uses a Chinese treebank (CTB) segmentation model, which was trained with Chinese segmentation. The Segmenter breaks down input messages into disjoint words separated by spaces. The following bash command runs the segmenter.
+
+
+```{r, engine = 'bash', eval = FALSE}
+
+./stanford-segmenter/segment.sh ctb result-samples.txt gb18030 0 > segment.txt
+
+
+```
+
+
+
+## Post-processing words
+
+A post-processing stage is deployed to remove words that are not meaningful in the context. These include all pronouns, conjunctions, prepositions, and particles.
+
+
+```{python, eval = FALSE}
+
+#!/usr/bin/python
+# @Title Weibo text file processor
+
+import sys, getopt
+import re
+
+
+    
+filename = "segment.txt"
+
+infile = open(filename, 'r', encoding="utf8", errors="surrogateescape")
+
+outfile = open("postprocess-"+filename, "w", encoding="utf8", errors="surrogateescape")
+    
+filterfile = open("postfilterwords.txt", 'r', encoding="utf8", errors="surrogateescape")
+
+with filterfile:
+    filterdata=filterfile.read().replace('\n', '')
+
+
+for line in infile:
+
+    line = re.sub(filterdata, "", line)        
+    outfile.write(line)
+    
+outfile.close()
+infile.close()    
+filterfile.close()
+
+```
+
+
+
+## Counting unique words and creating dictionary
+
+
+We can then create a dictionary of words from the data. The dictionary contains only unique words and that no words appear more than once in the dictionary. The following bash command finds the unique words.
+
+
+```{r, engine = 'bash', eval = FALSE}
+
+cat postprocess-segment.txt | tr [:space:] '\n' | grep -v "^\s*$" | sort | uniq | sort -bn  > count.txt
+
+```
+
+Using Python scripts that we have created, we are able to generate a frequency matrix that counts the number of times each word in the dictionary appears in each post. This matrix is then used in Latent Dirichlet Allocation.
+
+```{python, eval = FALSE}
+
+#!/usr/bin/python
+# coding=utf-8
+# @Title Weibo text file matrix generator
+
+import sys, getopt
+import re
+
+filename = 'count.txt'
+  
+infile = open(filename, 'r', encoding="utf-8", errors="surrogateescape")
+  
+outfile = open("matrix.txt", "w", encoding="utf-8", errors="surrogateescape")
+  
+dictionary = []
+  	
+for line in infile:
+  dictionary.append(line)
+
+infile.seek(0)
+  
+with infile:
+    heading=infile.read().replace('\n', ' ')
+
+infile.close()    
+      
+filename = 'postprocess-segment.txt'
+  
+infile = open(filename, 'r', encoding="utf-8", errors="surrogateescape")
+  
+for line in infile:
+
+    wordList = line.split()
+        
+    for item in dictionary:
+        countMatch = 0
+  
+        for word in wordList:
+  
+            if word.strip() == item.strip():
+                countMatch = countMatch + 1
+        
+        outfile.write(str(countMatch))
+        outfile.write(" ")
+          
+    outfile.write("\n")
+  
+outfile.close()
+
+```
